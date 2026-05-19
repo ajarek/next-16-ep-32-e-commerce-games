@@ -391,9 +391,9 @@ function StoreContent() {
                       )}
 
                       {/* Image Area */}
-                      <div className="relative aspect-video w-full overflow-hidden bg-black/40">
+                      <div className="relative aspect-[1/1.5] w-full overflow-hidden bg-black/40">
                         <Image
-                          src={failedImages[product.id] ? product.image_url : `https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?w=600&auto=format&fit=crop&q=80&text=${encodeURIComponent(product.name)}`}
+                          src={failedImages[product.id] ? `https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?w=600&auto=format&fit=crop&q=80&text=${encodeURIComponent(product.name)}` : product.image_url}
                           alt={product.name}
                           fill
                           sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"

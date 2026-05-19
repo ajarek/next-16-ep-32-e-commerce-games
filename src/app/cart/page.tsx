@@ -136,7 +136,7 @@ export default function CartPage() {
                       {/* Image Preview */}
                       <div className="relative w-full sm:w-32 aspect-video sm:aspect-square rounded-xl overflow-hidden shrink-0 bg-black/40">
                         <Image
-                          src={failedImages[item.id] ? item.products.image_url : `https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?w=600&auto=format&fit=crop&q=80&text=${encodeURIComponent(item.products.name)}`}
+                          src={failedImages[item.id] ? `https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?w=600&auto=format&fit=crop&q=80&text=${encodeURIComponent(item.products.name)}` : item.products.image_url}
                           alt={item.products.name}
                           fill
                           sizes="(max-width: 640px) 100vw, 128px"
