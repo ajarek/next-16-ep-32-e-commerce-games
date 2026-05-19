@@ -1,0 +1,325 @@
+# Klasyczne Gry Xbox 360 — Sklep Internetowy
+
+## Tech Stack
+
+- **Framework:** Next.js 15 (stable, React 19, Server Components)
+- **CSS:** Tailwind CSS 3.4 **(!) nie aktualizować do v4** — zablokować w package.json
+- **UI:** Shadcn/ui (komponenty)
+- **Animacje:** Framer Motion
+- **Backend:** InsForge (PostgREST, Auth, Storage)
+- **Język:** TypeScript
+- **Czcionki:** Orbitron / Rajdhani (nagłówki), Inter (tekst)
+- **Model 3D tła:** Spline — osadzony jako iframe
+  ```html
+  <iframe src="https://my.spline.design/gitnesssplinetest-bOcHK00BLNnoZOQWd8g8RY9Q6/" frameborder="0" width="100%" height="100%"></iframe>
+  ```
+
+## Styl globalny
+
+- Ciemne tło: #0a0a0a
+- Neony: gradient #00ffff → #0000ff oraz #ff7f50 → #ff69b4
+- Tekst gradientowy: #82fff3 → #fcc474
+- Świecące obramowania (box-shadow neon)
+- Efekty hover: glow + scale + smooth transition
+- Płynne animacje Framer Motion
+- W pełni responsywny (mobile-first)
+- Skeleton loadery podczas ładowania API (shadcn/ui Skeleton)
+- Mikro-interakcje: pulse licznika czasu, fade-in kart, slide-in przy scrollu
+
+## Backend — InsForge MCP
+
+### Krok 1: Pobranie szablonu
+Użyć `download-template` MCP — tworzy projekt z pre-konfiguracją backendu.
+
+### Krok 2: Baza danych (Postgres przez InsForge)
+
+Użyć `run-raw-sql` MCP do stworzenia tabel:
+
+```sql
+-- Kategorie produktów
+CREATE TABLE categories (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL,
+  slug TEXT NOT NULL UNIQUE,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Użytkownicy (auth InsForge automatycznie zarządza hasłami i sesjami)
+-- Wystarczy tabela profiles rozszerzająca domyślnych użytkowników auth
+CREATE TABLE profiles (
+  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  display_name TEXT,
+  avatar_url TEXT,
+  phone TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Produkty
+CREATE TABLE products (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT,
+  price NUMERIC(10,2) NOT NULL,
+  image_url TEXT,
+  category_id INTEGER REFERENCES categories(id),
+  is_on_deal BOOLEAN DEFAULT FALSE,
+  discount_percent INTEGER DEFAULT 0,
+  stock INTEGER DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Koszyk
+CREATE TABLE cart_items (
+  id SERIAL PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  quantity INTEGER NOT NULL DEFAULT 1,
+  price_at_add NUMERIC(10,2) NOT NULL,
+  added_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(user_id, product_id)
+);
+
+-- Zamówienia
+CREATE TABLE orders (
+  id SERIAL PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  total_amount NUMERIC(10,2) NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  shipping_address JSONB,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Elementy zamówienia
+CREATE TABLE order_items (
+  id SERIAL PRIMARY KEY,
+  order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+  product_id INTEGER NOT NULL REFERENCES products(id), -- brak ON DELETE CASCADE: historia zamówień nie może być usunięta
+  quantity INTEGER NOT NULL,
+  price_at_purchase NUMERIC(10,2) NOT NULL
+);
+```
+
+### Krok 3: RLS (Row Level Security) — obowiązkowe dla PostgREST
+
+Po stworzeniu tabel, należy dodać polityki RLS, aby użytkownicy mogli czytać/modyfikować tylko swoje dane:
+
+```sql
+-- Włącz RLS na tabelach wymagających autoryzacji
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE cart_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
+ALTER TABLE order_items ENABLE ROW LEVEL SECURITY;
+
+-- Polityki dla profiles
+CREATE POLICY "users can read own profile"
+  ON profiles FOR SELECT USING (auth.uid() = id);
+CREATE POLICY "users can insert own profile"
+  ON profiles FOR INSERT WITH CHECK (auth.uid() = id);
+CREATE POLICY "users can update own profile"
+  ON profiles FOR UPDATE USING (auth.uid() = id);
+
+-- Polityki dla cart_items
+CREATE POLICY "users can read own cart"
+  ON cart_items FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "users can insert own cart"
+  ON cart_items FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "users can update own cart"
+  ON cart_items FOR UPDATE USING (auth.uid() = user_id);
+CREATE POLICY "users can delete own cart"
+  ON cart_items FOR DELETE USING (auth.uid() = user_id);
+
+-- Polityki dla orders
+CREATE POLICY "users can read own orders"
+  ON orders FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "users can insert own orders"
+  ON orders FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+-- Polityki dla order_items
+CREATE POLICY "users can read own order items"
+  ON order_items FOR SELECT USING (
+    EXISTS (SELECT 1 FROM orders WHERE orders.id = order_items.order_id AND orders.user_id = auth.uid())
+  );
+CREATE POLICY "users can insert own order items"
+  ON order_items FOR INSERT WITH CHECK (
+    EXISTS (SELECT 1 FROM orders WHERE orders.id = order_items.order_id AND orders.user_id = auth.uid())
+  );
+```
+
+Produkty i kategorie mogą być publiczne (RLS domyślnie wyłączone lub `FOR SELECT USING (true)`).
+
+### Krok 4: Przykładowe produkty (10 sztuk — po polsku)
+
+Użyć `run-raw-sql` MCP do wstawienia danych:
+
+```sql
+-- Kategorie
+INSERT INTO categories (name, slug) VALUES
+  ('Strzelanki', 'strzelanki'),
+  ('RPG', 'rpg'),
+  ('Wyścigi', 'wyscigi'),
+  ('Przygodowe', 'przygodowe'),
+  ('Akcji', 'akcji');
+
+-- Produkty
+INSERT INTO products (name, description, price, category_id, is_on_deal, discount_percent, stock, image_url) VALUES
+  ('Halo 3', 'Epicka strzelanka science-fiction. Master Chief powraca, by ocalić ludzkość.', 49.99, 1, TRUE, 30, 15, 'https://placehold.co/400x400/0a0a0a/00ffff?text=Halo+3'),
+  ('Gears of War 2', 'Walka z Lokustami w mrocznym, cinematicznym świecie akcji.', 39.99, 5, FALSE, 0, 10, 'https://placehold.co/400x400/0a0a0a/ff7f50?text=Gears+2'),
+  ('Forza Motorsport 3', 'Najbardziej realistyczny symulator wyścigów na Xbox 360.', 29.99, 3, TRUE, 20, 20, 'https://placehold.co/400x400/0a0a0a/00ffff?text=Forza+3'),
+  ('Fable II', 'Ogromne RPG akcji w magicznym świecie Albionu. Twoje wybory mają znaczenie.', 34.99, 2, FALSE, 0, 12, 'https://placehold.co/400x400/0a0a0a/ff7f50?text=Fable+II'),
+  ('Mass Effect 2', 'Kosmiczne RPG z wciągającą historią i drużyną niezapomnianych bohaterów.', 44.99, 2, TRUE, 25, 8, 'https://placehold.co/400x400/0a0a0a/00ffff?text=Mass+Effect+2'),
+  ('Bioshock', 'Zanurz się w podwodnym mieście Rapture. Strzelanka z elementami horroru i filozofii.', 24.99, 1, FALSE, 0, 18, 'https://placehold.co/400x400/0a0a0a/ff7f50?text=Bioshock'),
+  ('Call of Duty: Modern Warfare 2', 'Legendarna kampania i kultowy tryb multiplayer. Akcja na najwyższym poziomie.', 54.99, 1, TRUE, 15, 25, 'https://placehold.co/400x400/0a0a0a/00ffff?text=MW2'),
+  ('Assassin\'s Creed II', 'Podróż do renesansowych Włoch. Skradankowa gra akcji z otwartym światem.', 29.99, 4, FALSE, 0, 10, 'https://placehold.co/400x400/0a0a0a/ff7f50?text=AC+II'),
+  ('Left 4 Dead 2', 'Kooperacyjna strzelanka zombie. Czterech ocalałych, tysiące zombie, nieskończona akcja.', 19.99, 1, TRUE, 40, 30, 'https://placehold.co/400x400/0a0a0a/00ffff?text=L4D2'),
+  ('Red Dead Redemption', 'Western z otwartym światem. Wciel się w Johna Marstona na Dzikim Zachodzie.', 59.99, 4, FALSE, 0, 5, 'https://placehold.co/400x400/0a0a0a/ff7f50?text=RDR');
+```
+
+### Krok 5: API — PostgREST (automatyczne z InsForge)
+
+InsForge automatycznie udostępnia REST API z każdej tabeli. Nie trzeba pisać route handlerów:
+
+| Endpoint | Metoda | Opis |
+|----------|--------|------|
+| `/products` | GET | Lista produktów (?category_id=eq.1, ?is_on_deal=eq.true) |
+| `/products?select=*` | GET | Produkty z relacjami |
+| `/products?id=eq.5` | GET | Pojedynczy produkt |
+| `/cart_items` | GET | Koszyk bieżącego użytkownika |
+| `/cart_items` | POST | Dodanie do koszyka |
+| `/cart_items?id=eq.3` | PATCH | Aktualizacja ilości |
+| `/cart_items?id=eq.3` | DELETE | Usunięcie z koszyka |
+| `/orders` | GET lub POST | Zamówienia |
+| `/order_items` | GET | Elementy zamówień |
+
+### Krok 6: Auth — gotowe komponenty InsForge (Next.js)
+
+Użyć `auth-components-nextjs` do pre-built UI logowania/rejestracji (zgodne z Next.js SSR):
+
+- Rejestracja: email + hasło
+- Logowanie: email + hasło
+- Wylogowanie
+- Profil użytkownika (imię, awatar)
+- OAuth (Google, GitHub) — opcjonalnie
+
+### Krok 7: Storage — InsForge do obrazów
+
+- Stworzyć bucket `product-images` przez `create-bucket` MCP
+- Upload obrazów przez SDK (`storage.upload`)
+- Zapisać URL w tabeli `products.image_url`
+
+### Krok 8: AI (OpenRouter) — opcjonalnie
+
+InsForge provisionuje klucz OpenRouter. Można użyć do generowania opisów produktów lub rekomendacji.
+
+## Strony aplikacji (7 stron)
+
+### Zasady nawigacji:
+- Użytkownik niezalogowany: może przeglądać **stronę główną**, **sklep**, **oferty** i **o nas**
+- Próba **dodania do koszyka**, **złożenia zamówienia** lub wejścia na **/cart**, **/checkout**, **/orders** → redirect do logowania/rejestracji
+- Po zalogowaniu: pełny dostęp
+
+---
+
+### 1. Strona główna — `/`
+
+- **Bohater (Hero):** Tło Spline 3D z animacją (iframe)
+- **Nagłówek:** "Klasyczne Gry Xbox 360" — świecący tekst gradientowy
+- **Podtytuł:** "Odkryj na nowo złotą erę gamingu. Kultowe tytuły, neonowy styl, jedna platforma."
+- **CTA:**
+  - "🛒 Kup teraz" → `/store`
+  - "🔥 Zobacz oferty" → `/deals`
+- **Sekcja promocyjna:** 3 losowe produkty z is_on_deal=true (karty z neonowym glow)
+
+### 2. Sklep — `/store`
+
+- **Nagłówek:** "Sklep" z podliczbą produktów
+- **Wyszukiwarka:** Input z debounce, filtruje produkty po nazwie
+- **Filtry:**
+  - Kategorie (checkboxy z nazwami kategorii)
+  - Przedział cenowy (inputy min/max)
+  - Sortowanie: po cenie (ros./malej.), po nazwie (A-Z/Z-A), po nowości
+- **Siatka produktów:** Responsywna grid (1 kol. mobile → 3 kol. desktop)
+- **Karta produktu:**
+  - Neonowe obramowanie (box-shadow cyjan/koralowy)
+  - Obraz (placeholder lub URL)
+  - Nazwa (Orbitron, małe)
+  - Cena z przeceną jeśli is_on_deal (przekreślona oryginalna + nowa)
+  - Znaczek rabatu jeśli dostępny
+  - Przycisk "Dodaj do koszyka" z efektem glow na hover
+  - Framer Motion: fade-in na scroll, scale na hover
+- **Paginacja** lub "Load more"
+
+### 3. Oferty — `/deals`
+
+- **Baner bohatera:** "🔥 Oferty ograniczone czasowo 🔥"
+- **Licznik czasu:** Odliczanie do końca promocji (np. 24h od wejścia)
+  - Animacja pulse gdy < 1h
+  - Efekt "błysku" neonu
+- **Siatka produktów:** tylko `is_on_deal = true`
+- **Karty:** Jak w `/store`, ale z dodatkowym, dużym znaczkiem rabatowym (#ff7f50 → #ff69b4)
+- **Tekst:** "Promocja ważna do: [data]" z countdown timerem
+
+### 4. Koszyk — `/cart` *(nowa strona)*
+
+- **Lista produktów w koszyku:**
+  - Obraz, nazwa, cena jednostkowa
+  - Ilość (stepper: +/-, można edytować)
+  - Cena całkowita za produkt
+  - Przycisk usuń (ikona kosza)
+- **Podsumowanie:**
+  - Liczba produktów
+  - Suma całkowita
+  - Przycisk "Przejdź do kasy" → `/checkout`
+- **Stan pusty:** "Twój koszyk jest pusty" + CTA "Przeglądaj sklep"
+- Animacje: slide-in/usuwanie produktów
+
+### 5. Checkout — `/checkout` *(nowa strona)*
+
+- **Formularz adresu:** ulica, miasto, kod pocztowy, kraj
+- **Podsumowanie zamówienia:** lista produktów z koszyka, ceny
+- **Przycisk "Złóż zamówienie"** → POST `/orders` + POST `/order_items` + DELETE `/cart_items`
+- **Potwierdzenie:** toast lub redirect do `/orders`
+
+### 6. Historia zamówień — `/orders` *(nowa strona)*
+
+- **Lista zamówień użytkownika:**
+  - Numer zamówienia (ID)
+  - Data
+  - Kwota
+  - Status (z kolorowym badge: pending=żółty, confirmed=niebieski, shipped=fioletowy, delivered=zielony, cancelled=czerwony)
+- **Szczegóły zamówienia:** rozwijana sekcja z listą produktów i cenami
+
+### 7. O nas — `/about`
+
+- **Bohater:** "Klasyczne Gry Xbox 360" — ta sama stylistyka neonowa
+- **Misja:** "Jesteśmy pasjonatami złotej ery Xbox 360. Naszym celem jest zachowanie i udostępnianie najlepszych gier tej generacji w nowoczesnej, cyfrowej formie."
+- **Opis:** Krótka historia Xbox 360, dlaczego to była najlepsza generacja
+- **CTA:** "✨ Odwiedź sklep" → `/store`
+
+## Implementacja — flow
+
+1. Pobrać szablon przez `download-template` MCP
+2. Zainstalować SDK: `npm install @insforge/sdk@latest`
+3. Stworzyć klienta SDK w pliku `lib/insforge.ts`
+4. Skonfigurować Tailwind: dołączyć Tailwind 3.4, dodać kolory neonowe, gradienty
+5. Dodać Shadcn/ui komponenty (Button, Card, Input, Badge, Skeleton, Toast, Dialog)
+6. Stworzyć schemat bazy (run-raw-sql)
+7. Dodać polityki RLS (run-raw-sql)
+8. Wstawić 10 produktów (run-raw-sql)
+9. Zaimplementować auth (auth-components-nextjs)
+10. Stworzyć layout główny (navbar, footer)
+11. Zbudować strony po kolei: Home → Store → Deals → Cart → Checkout → Orders → About
+12. Podpiąć wszystkie zapytania przez SDK InsForge
+13. Przetestować w przeglądarce
+14. Deploy przez `create-deployment` MCP
+
+## Uwagi końcowe
+
+- Wszystkie teksty UI po polsku (pl-PL)
+- Produkty, opisy, kategorie — po polsku
+- Ceny w PLN (zł)
+- SEO: meta title, description, Open Graph na każdej stronie
+- Next.js Server Components gdzie się da, Client Components tylko dla interaktywności
+- Komponent ErrorBoundary na każdej stronie
+- Ładowanie stanów (skeleton loadery)
+- Pusta lista (empty states)
+- Błędy API (toast z komunikatem)
