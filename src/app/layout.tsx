@@ -21,7 +21,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Xbox 360 Classics - Sklep z legendarnymi grami retro",
+  title: "Xbox 360 Classics - Sklep z grami",
   description: "Odkryj na nowo złotą erę gamingu. Najlepsze, klasyczne gry na Xbox 360 w neonowym, ultra-stylowym sklepie internetowym.",
 };
 

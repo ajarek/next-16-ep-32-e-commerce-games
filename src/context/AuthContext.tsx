@@ -17,9 +17,11 @@ interface AuthContextType {
   user: User | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
-  signup: (email: string, password: string, name: string) => Promise<{ success: boolean; error?: string }>;
+  signup: (email: string, password: string, name: string) => Promise<{ success: boolean; requireVerification?: boolean; error?: string }>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
+  verifyEmail: (email: string, otp: string) => Promise<{ success: boolean; error?: string }>;
+  resendVerification: (email: string) => Promise<{ success: boolean; error?: string }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -112,13 +114,49 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return { success: true };
       } else if (data?.requireEmailVerification) {
         // If email verification is enabled, they need to verify.
-        // For simplicity, if we don't have code verification screen, we can just say success but user is not logged in.
-        return { success: true, error: 'Konto zarejestrowane. Zaloguj się.' };
+        return { success: true, requireVerification: true, error: 'Konto zarejestrowane. Wymagana weryfikacja e-mail.' };
       }
 
       return { success: true };
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Wystąpił nieoczekiwany błąd';
+      return { success: false, error: errorMsg };
+    }
+  };
+
+  const verifyEmail = async (email: string, otp: string) => {
+    try {
+      const { data, error } = await insforge.auth.verifyEmail({ email, otp });
+      if (error) {
+        return { success: false, error: error.message };
+      }
+      if (data?.accessToken && data?.user) {
+        setUser({
+          id: data.user.id,
+          email: data.user.email,
+          profile: data.user.profile,
+        });
+        return { success: true };
+      }
+      return { success: false, error: 'Nie udało się zweryfikować e-maila.' };
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : 'Wystąpił nieoczekiwany błąd podczas weryfikacji';
+      return { success: false, error: errorMsg };
+    }
+  };
+
+  const resendVerification = async (email: string) => {
+    try {
+      const { data, error } = await insforge.auth.resendVerificationEmail({ email });
+      if (error) {
+        return { success: false, error: error.message };
+      }
+      if (data?.success) {
+        return { success: true };
+      }
+      return { success: false, error: 'Nie udało się wysłać kodu weryfikacyjnego.' };
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : 'Wystąpił nieoczekiwany błąd podczas wysyłania';
       return { success: false, error: errorMsg };
     }
   };
@@ -134,7 +172,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, signup, logout, refreshUser }}>
+    <AuthContext.Provider value={{ user, loading, login, signup, logout, refreshUser, verifyEmail, resendVerification }}>
       {children}
     </AuthContext.Provider>
   );
