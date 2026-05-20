@@ -75,11 +75,11 @@ export default function HomePage() {
               playsInline
               preload='auto'
               crossOrigin='anonymous'
-              poster='https://images.unsplash.com/photo-1511512578047-dfb367046420?auto=format&fit=crop&w=1400&q=80'
+              poster='/hero.png'
               aria-hidden='true'
               onError={() => setHeroVideoFailed(true)}
               className='w-full h-full object-cover opacity-50 absolute inset-0 z-0'
-              src='https://assets.mixkit.co/videos/preview/mixkit-tunnel-of-futuristic-neon-lights-31846-large.mp4'
+              src='/hero-video.mp4'
             />
           ) : (
             <div className='absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(0,255,255,0.18),transparent_35%),linear-gradient(180deg,#020204,_#0a0a0a)]' />
