@@ -16,6 +16,7 @@ export default function HomePage() {
   const [deals, setDeals] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [failedImages, setFailedImages] = useState<Record<number, boolean>>({})
+  const [heroVideoFailed, setHeroVideoFailed] = useState(false)
   const { addToCart } = useCart()
   const { user } = useAuth()
   const router = useRouter()
@@ -65,23 +66,28 @@ export default function HomePage() {
       {/* Hero Section */}
       <section className='relative min-h-[90vh] flex items-center justify-center overflow-hidden py-20 px-4 sm:px-6 lg:px-8'>
         {/* Background Spline Iframe - 3D scene */}
-        <div className='absolute inset-0 z-0 pointer-events-auto'>
-          <video
-            autoPlay
-            loop
-            muted
-            playsInline
-            className='w-full h-full object-cover opacity-50 absolute inset-0 z-0'
-          >
-            <source
+        <div className='absolute inset-0 z-0 pointer-events-none'>
+          {!heroVideoFailed ? (
+            <video
+              autoPlay
+              loop
+              muted
+              playsInline
+              preload='auto'
+              crossOrigin='anonymous'
+              poster='https://images.unsplash.com/photo-1511512578047-dfb367046420?auto=format&fit=crop&w=1400&q=80'
+              aria-hidden='true'
+              onError={() => setHeroVideoFailed(true)}
+              className='w-full h-full object-cover opacity-50 absolute inset-0 z-0'
               src='https://assets.mixkit.co/videos/preview/mixkit-tunnel-of-futuristic-neon-lights-31846-large.mp4'
-              type='video/mp4'
             />
-          </video>
+          ) : (
+            <div className='absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(0,255,255,0.18),transparent_35%),linear-gradient(180deg,#020204,_#0a0a0a)]' />
+          )}
         </div>
 
         {/* Shadow Overlay */}
-        <div className='absolute inset-0 bg-gradient-to-t from-[#0a0a0a] via-black/40 to-transparent z-1 pointer-events-none' />
+        <div className='absolute inset-0 bg-gradient-to-t from-[#0a0a0a] via-black/40 to-transparent z-[1] pointer-events-none' />
 
         {/* Content Container */}
         <div className='relative z-10 max-w-7xl mx-auto text-center space-y-8 select-none'>
