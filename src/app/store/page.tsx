@@ -415,9 +415,21 @@ function StoreContent() {
                           {product.name}
                         </h3>
 
-                        <p className="font-rajdhani text-sm text-gray-400 font-semibold tracking-wider line-clamp-2 mb-4">
-                          {product.description}
-                        </p>
+                        <div className="relative group/desc mb-4 cursor-pointer">
+                          <p className="font-rajdhani text-sm text-gray-400 font-semibold tracking-wider line-clamp-2">
+                            {product.description}
+                          </p>
+                          {/* Tooltip z pełnym opisem */}
+                          <div className="pointer-events-none absolute bottom-full left-0 z-50 mb-2 w-64 opacity-0 group-hover/desc:opacity-100 transition-opacity duration-200">
+                            <div className="rounded-xl bg-[#111] border border-neonCyan/20 shadow-[0_0_20px_rgba(0,255,255,0.1)] backdrop-blur-md p-3">
+                              <p className="font-rajdhani text-sm text-gray-300 font-semibold tracking-wider leading-relaxed">
+                                {product.description}
+                              </p>
+                            </div>
+                            {/* Strzałka tooltipa */}
+                            <div className="w-3 h-3 bg-[#111] border-r border-b border-neonCyan/20 rotate-45 ml-4 -mt-1.5" />
+                          </div>
+                        </div>
 
                         {/* Pricing and Action */}
                         <div className="mt-auto flex items-end justify-between pt-2">
